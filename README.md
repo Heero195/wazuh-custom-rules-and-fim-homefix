@@ -81,16 +81,16 @@ Dù thao tác trên giao diện Web rất tiện lợi, nhưng một lỗi sai n
 ---
 
 ## Sự cố 4: Tự động hóa ngăn chặn tấn công với Active Response
-Ngữ cảnh & Vấn đề:
-Sau khi xây dựng thành công bộ Custom Rule (ID: 100002) để phát hiện hành vi dò quét mật khẩu (SSH Brute-force), hệ thống đã cảnh báo chính xác. Tuy nhiên, nếu chỉ dừng lại ở việc sinh ra cảnh báo (Alert), hệ thống vẫn gặp rủi ro trong thời gian chờ đợi chuyên viên SOC can thiệp thủ công. Yêu cầu đặt ra là phải tự động chặn đứng IP của kẻ tấn công ngay lập tức để giảm chỉ số MTTR (Mean Time To Respond).
+**Ngữ cảnh & Vấn đề:**
+Sau khi xây dựng thành công bộ Custom Rule (ID: `100002`) để phát hiện hành vi dò quét mật khẩu (SSH Brute-force), hệ thống đã cảnh báo chính xác. Tuy nhiên, nếu chỉ dừng lại ở việc sinh ra cảnh báo (Alert), hệ thống vẫn gặp rủi ro trong thời gian chờ đợi chuyên viên SOC can thiệp thủ công. Yêu cầu đặt ra là phải **tự động chặn đứng IP của kẻ tấn công ngay lập tức** để giảm chỉ số MTTR (Mean Time To Respond).
 
-Giải pháp áp dụng:
-Triển khai tính năng Active Response của Wazuh, sử dụng kịch bản (script) firewall-drop để tự động giao tiếp với tường lửa iptables trên Linux và cô lập IP độc hại.
+**Giải pháp áp dụng:**
+Triển khai tính năng **Active Response** của Wazuh, sử dụng kịch bản (script) `firewall-drop` để tự động giao tiếp với tường lửa `iptables` trên Linux và cô lập IP độc hại.
 
-1. Cấu hình hệ thống (Wazuh Manager)
-Tiến hành chỉnh sửa file /var/ossec/etc/ossec.conf và bổ sung cấu hình Active Response:
+**1. Cấu hình hệ thống (Wazuh Manager)**
+Tiến hành chỉnh sửa file `/var/ossec/etc/ossec.conf` và bổ sung cấu hình Active Response:
 
-XML
+```xml
 <active-response>
   <disabled>no</disabled>
   <command>firewall-drop</command>
@@ -98,31 +98,47 @@ XML
   <rules_id>100002</rules_id>
   <timeout>300</timeout>
 </active-response>
-Ghi chú cấu hình:
 
-Lệnh thiết lập <rules_id>100002</rules_id> đóng vai trò là "cò súng", chỉ kích hoạt chặn IP khi phát hiện đúng hành vi SSH Brute-force.
+```
 
-Best Practice: Bổ sung thẻ <timeout>300</timeout> để tường lửa tự động mở khóa (unblock) sau 5 phút, tránh tình trạng bảng rule của iptables bị phình to hoặc chặn nhầm (False Positive) làm gián đoạn nghiệp vụ lâu dài.
+*Ghi chú cấu hình:*
 
-2. Kịch bản Kiểm chứng (Live Test)
+* Lệnh thiết lập `<rules_id>100002</rules_id>` đóng vai trò là "cò súng", chỉ kích hoạt chặn IP khi phát hiện đúng hành vi SSH Brute-force.
+* **Best Practice:** Bổ sung thẻ `<timeout>300</timeout>` để tường lửa tự động mở khóa (unblock) sau 5 phút, tránh tình trạng bảng rule của iptables bị phình to hoặc chặn nhầm (False Positive) làm gián đoạn nghiệp vụ lâu dài.
 
-Mô phỏng tấn công: Từ máy trạm Windows (Attacker), thực hiện đăng nhập SSH sai mật khẩu liên tục vào máy chủ Ubuntu (Agent) để kích hoạt ngưỡng của Rule 100002.
+**2. Kịch bản Kiểm chứng (Live Test)**
 
-Giám sát thời gian thực: Trạng thái kết nối (ping) từ máy Attacker đến Server liên tục trả về Reply. Nhưng ngay khoảnh khắc rule cảnh báo bị kích hoạt, kết nối lập tức bị ngắt, Ping trả về kết quả Request timed out.
+* **Mô phỏng tấn công:** Từ máy trạm Windows (Attacker), thực hiện đăng nhập SSH sai mật khẩu liên tục vào máy chủ Ubuntu (Agent) để kích hoạt ngưỡng của Rule `100002`.
+* **Giám sát thời gian thực:** Trạng thái kết nối (ping) từ máy Attacker đến Server liên tục trả về `Reply`. Nhưng ngay khoảnh khắc rule cảnh báo bị kích hoạt, kết nối lập tức bị ngắt, Ping trả về kết quả `Request timed out`.
 
-3. Phân tích System Log & Gỡ lỗi (Troubleshooting)
+**3. Phân tích System Log & Gỡ lỗi (Troubleshooting)**
 Để xác minh Active Response hoạt động đúng ở mức hệ thống, tiến hành truy xuất bảng rule của tường lửa trên Ubuntu Agent:
 
-Bash
+```bash
 sudo iptables -L -n --line-numbers
-Kết quả: Wazuh Agent đã tự động chèn IP của Attacker vào đầu danh sách DROP ở cả 2 luồng Chain INPUT và Chain FORWARD:
 
-Plaintext
+```
+
+*Kết quả:* Wazuh Agent đã tự động chèn IP của Attacker vào đầu danh sách `DROP` ở cả 2 luồng `Chain INPUT` và `Chain FORWARD`:
+
+```text
 Chain INPUT (policy ACCEPT)
 num  target     prot opt source               destination
 1    DROP       all  --  192.168.214.141      0.0.0.0/0
+
+```
+
 Trong trường hợp cần can thiệp thủ công (Incident Response), tiến hành gỡ bỏ phong ấn cho IP thông qua lệnh xóa rule chỉ định:
 
-Bash
+```bash
 sudo iptables -D INPUT 1
 sudo iptables -D FORWARD 1
+
+```
+
+**Kết luận:**
+Việc cấu hình thành công Active Response đã biến SIEM từ một công cụ giám sát thụ động trở thành một hệ thống IPS (Intrusion Prevention System) chủ động, giúp giảm thiểu tối đa sự phụ thuộc vào con người trong các cuộc tấn công cơ bản.
+
+---
+
+
