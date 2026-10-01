@@ -78,4 +78,51 @@ Dù thao tác trên giao diện Web rất tiện lợi, nhưng một lỗi sai n
 1. Sử dụng công cụ **Ruleset Test** (được tích hợp sẵn ngay trên giao diện Wazuh Dashboard) để dán chuỗi raw log sự kiện Windows vào. Xác nhận bộ máy phân tích đọc đúng các trường và kích hoạt thành công (trigger) bộ luật tùy chỉnh ở **Phase 3**.
 2. Sau khi xác nhận rule hoạt động đúng, tiến hành **Save** file `local_rules.xml` trên Web UI. Giao diện sẽ tự động kiểm tra nhanh cú pháp.
 3. Giao diện Wazuh sẽ hiển thị một thông báo màu vàng (Pending restart) ở góc màn hình. Click vào nút **Restart** ngay trên giao diện web để hệ thống tự động khởi động lại dịch vụ Manager một cách an toàn và áp dụng luật mới (thay vì phải SSH vào máy chủ Linux để gõ lệnh `systemctl restart wazuh-manager`).
+---
 
+## Sự cố 4: Tự động hóa ngăn chặn tấn công với Active Response
+Ngữ cảnh & Vấn đề:
+Sau khi xây dựng thành công bộ Custom Rule (ID: 100002) để phát hiện hành vi dò quét mật khẩu (SSH Brute-force), hệ thống đã cảnh báo chính xác. Tuy nhiên, nếu chỉ dừng lại ở việc sinh ra cảnh báo (Alert), hệ thống vẫn gặp rủi ro trong thời gian chờ đợi chuyên viên SOC can thiệp thủ công. Yêu cầu đặt ra là phải tự động chặn đứng IP của kẻ tấn công ngay lập tức để giảm chỉ số MTTR (Mean Time To Respond).
+
+Giải pháp áp dụng:
+Triển khai tính năng Active Response của Wazuh, sử dụng kịch bản (script) firewall-drop để tự động giao tiếp với tường lửa iptables trên Linux và cô lập IP độc hại.
+
+1. Cấu hình hệ thống (Wazuh Manager)
+Tiến hành chỉnh sửa file /var/ossec/etc/ossec.conf và bổ sung cấu hình Active Response:
+
+XML
+<active-response>
+  <disabled>no</disabled>
+  <command>firewall-drop</command>
+  <location>local</location>
+  <rules_id>100002</rules_id>
+  <timeout>300</timeout>
+</active-response>
+Ghi chú cấu hình:
+
+Lệnh thiết lập <rules_id>100002</rules_id> đóng vai trò là "cò súng", chỉ kích hoạt chặn IP khi phát hiện đúng hành vi SSH Brute-force.
+
+Best Practice: Bổ sung thẻ <timeout>300</timeout> để tường lửa tự động mở khóa (unblock) sau 5 phút, tránh tình trạng bảng rule của iptables bị phình to hoặc chặn nhầm (False Positive) làm gián đoạn nghiệp vụ lâu dài.
+
+2. Kịch bản Kiểm chứng (Live Test)
+
+Mô phỏng tấn công: Từ máy trạm Windows (Attacker), thực hiện đăng nhập SSH sai mật khẩu liên tục vào máy chủ Ubuntu (Agent) để kích hoạt ngưỡng của Rule 100002.
+
+Giám sát thời gian thực: Trạng thái kết nối (ping) từ máy Attacker đến Server liên tục trả về Reply. Nhưng ngay khoảnh khắc rule cảnh báo bị kích hoạt, kết nối lập tức bị ngắt, Ping trả về kết quả Request timed out.
+
+3. Phân tích System Log & Gỡ lỗi (Troubleshooting)
+Để xác minh Active Response hoạt động đúng ở mức hệ thống, tiến hành truy xuất bảng rule của tường lửa trên Ubuntu Agent:
+
+Bash
+sudo iptables -L -n --line-numbers
+Kết quả: Wazuh Agent đã tự động chèn IP của Attacker vào đầu danh sách DROP ở cả 2 luồng Chain INPUT và Chain FORWARD:
+
+Plaintext
+Chain INPUT (policy ACCEPT)
+num  target     prot opt source               destination
+1    DROP       all  --  192.168.214.141      0.0.0.0/0
+Trong trường hợp cần can thiệp thủ công (Incident Response), tiến hành gỡ bỏ phong ấn cho IP thông qua lệnh xóa rule chỉ định:
+
+Bash
+sudo iptables -D INPUT 1
+sudo iptables -D FORWARD 1
