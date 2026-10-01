@@ -1,0 +1,1 @@
+# wazuh-custom-rules-and-fim-homefix
