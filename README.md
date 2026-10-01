@@ -1,5 +1,5 @@
-```markdown
-# Write-up: Triển khai và Xử lý sự cố Hệ thống Wazuh SIEM (Home Lab)
+
+# Write-up: Triển khai và Xử lý sự cố Hệ thống Wazuh SIEM custom rules và fim (Home Lab)
 
 **Mục tiêu:** Cấu hình hệ thống giám sát an toàn thông tin tập trung sử dụng Wazuh (Manager & Agent) trên môi trường ảo hóa VMware Workstation, thiết lập Giám sát tính toàn vẹn tệp tin (FIM) và phát triển các bộ quy tắc cảnh báo tùy chỉnh (Custom Rules).
 
@@ -20,7 +20,7 @@ Sau khi tiến hành cấu hình file để thiết lập tính năng giám sát
    ```bash
    journalctl -xeu wazuh-agent.service
 
-```
+
 
 2. Kiểm tra thêm log nội bộ của Wazuh Agent tại `/var/ossec/logs/ossec.log` để khoanh vùng nguyên nhân. Log chỉ ra lỗi liên quan đến việc đọc tệp tin cấu hình.
 3. Tiến hành rà soát file cấu hình chính tại `/var/ossec/etc/ossec.conf`.
